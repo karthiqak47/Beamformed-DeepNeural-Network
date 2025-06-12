@@ -6,17 +6,17 @@ import random
 T = 200                     # Number of time steps (frames)
 c = 1500                    # Speed of sound (m/s)
 fc = 1000                   # Center frequency (Hz)
-fs = 100                    # Sampling rate (frames per second = temporal resolution)
+fs = 100                    # Sampling rate (frames per second)
 M = 32                      # Number of hydrophones
 d = 0.45 * c / fc           # Element spacing (half-wavelength)
 Theta = np.arange(0, 181)   # Beam angles
-doa = 28                   # True DOA for synthetic target
+doa = np.random.uniform(0,180)                   # True DOA for synthetic target
 snr_min = -14               # Minimum SNR (dB)
-signal_band = 5            # Frequency bins to keep around fc (±Hz)
+signal_band = 5             # Frequency bins to keep around fc (±Hz)
 
 # --- Buffers ---
 labels = []
-Z = np.zeros((T, len(Theta)), dtype=np.complex64)  # [time, angle] — complex for FFT
+Z = np.zeros((T, len(Theta)), dtype=np.complex64)  # [time, angle]
 
 # --- Generate time-domain beamformed data (complex) ---
 for i in range(T):
@@ -39,34 +39,36 @@ for i in range(T):
     # Beamforming across angles
     S = np.exp(1j * 2 * np.pi * fc * d / c * np.cos(np.radians(Theta))[:, None] * np.arange(M))  # [angle, M]
     B = np.dot(S, y.conj())  # shape: (len(Theta),)
-    Z[i, :] = B  # Save complex beamformed data for FFT
+    Z[i, :] = B
 
 # --- FFT along time axis for each azimuth angle ---
-Z_fft = np.fft.fft(Z, axis=0)  # shape: (T, angles)
-freqs = np.fft.fftfreq(T, d=1/fs)  # Frequency axis
+Z_fft = np.fft.fft(Z, axis=0)
+freqs = np.fft.fftfreq(T, d=1/fs)
 
-# --- Focus on bins around 0 Hz (we simulated narrowband signals)
+# --- Focus on bins around 0 Hz ---
 k_center = np.abs(freqs - 0).argmin()
 k_range = signal_band // 2
 k_start = max(0, k_center - k_range)
 k_end = min(T, k_center + k_range + 1)
 
-# --- Extract magnitude spectrum and normalize per frame ---
+# --- Extract magnitude spectrum ---
 Z_mag = np.abs(Z_fft[k_start:k_end, :])  # shape: (freq_bins, angles)
-Z_norm = (Z_mag - np.mean(Z_mag)) / np.std(Z_mag)  # normalize full feature map
+
+# --- Global normalization (across full matrix) ---
+Z_norm = (Z_mag - np.mean(Z_mag)) / np.std(Z_mag)
 
 # --- Plot final normalized FFT beam domain as heatmap ---
 plt.figure(figsize=(10, 5))
-extent = [0, 180, freqs[k_end-1], freqs[k_start]]  # frequency on y-axis
+extent = [0, 180, freqs[k_end - 1], freqs[k_start]]
 plt.imshow(Z_norm, aspect='auto', extent=extent, cmap='plasma')
 plt.colorbar(label='Normalized FFT Magnitude')
 plt.xlabel("Azimuth (degrees)")
 plt.ylabel("Frequency (Hz) from carrier")
-plt.title("Beam Domain FFT (Normalized, Matching Paper Method)")
+plt.title("Beam Domain FFT (Global Normalization)")
 plt.tight_layout()
 plt.show()
 
-
+# --- Plot 1D FFT magnitude at center frequency ---
 plt.plot(Theta, np.abs(Z_fft[k_center, :]))
 plt.title("1D Beamformed Spectrum at Center Frequency")
 plt.xlabel("Azimuth (°)")
